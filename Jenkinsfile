@@ -1,12 +1,10 @@
 // This is a "declarative pipeline" script
 pipeline {
-    // 1. "agent any" means this pipeline can run on any available Jenkins machine
+    // 1. The agent block is updated to use a Docker container and mount the host's 
+    //    Docker socket to enable 'docker build/push' commands.
     agent {
         docker {
-            // Use a Node.js image for your application environment
             image 'node:18-slim'
-            // CRITICAL FIX: Mount the host's Docker socket to allow commands inside 
-            // the container (like 'docker build') to talk to the host's Docker engine.
             args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
@@ -114,8 +112,13 @@ pipeline {
         // "always" runs whether the pipeline passed or failed
         always {
             echo "Pipeline finished."
-            // This cleans up the Docker images to save space
-            sh "docker rmi ${env.IMAGE_NAME} || true"
+            // CRITICAL FIX: Wrap the 'sh' step in a script/node block to restore workspace context
+            script {
+                node {
+                    // This cleans up the Docker images to save space
+                    sh "docker rmi ${env.IMAGE_NAME} || true"
+                }
+            }
         }
         // "success" only runs if all stages passed
         success {
