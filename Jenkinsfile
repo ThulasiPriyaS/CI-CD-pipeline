@@ -1,7 +1,15 @@
 // This is a "declarative pipeline" script
 pipeline {
     // 1. "agent any" means this pipeline can run on any available Jenkins machine
-    agent any
+    agent {
+        docker {
+            // Use a Node.js image for your application environment
+            image 'node:18-slim'
+            // CRITICAL FIX: Mount the host's Docker socket to allow commands inside 
+            // the container (like 'docker build') to talk to the host's Docker engine.
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
 
     // 2. These are "environment variables" - like settings for our pipeline.
     // We will set these up inside Jenkins later.
@@ -17,8 +25,10 @@ pipeline {
     stages {
         
         stage('Initialize') {
+ 
             steps {
-                // This command prints the Project ID. We use ${env.VAR_NAME} to use the variables.
+                // This command prints the Project ID.
+                // We use ${env.VAR_NAME} to use the variables.
                 echo "Starting build for GCP Project: ${env.PROJECT_ID}"
                 // This 'sh' command runs a shell command
                 sh 'gcloud --version'
@@ -27,13 +37,15 @@ pipeline {
 
         stage('Build') {
             steps {
-                // This step just shows us our app code
+    
+             // This step just shows us our app code
                 echo "Building the application..."
                 sh 'ls -la'
             }
         }
 
         stage('Build Docker Image') {
+            
             steps {
                 echo "Building Docker image..."
                 // We create a unique name for our image using the GCP location, project ID, repo name, and app name.
@@ -42,7 +54,8 @@ pipeline {
                     env.IMAGE_NAME = "${env.REGION}-docker.pkg.dev/${env.PROJECT_ID}/${env.REPO_NAME}/${env.APP_NAME}:${env.BUILD_NUMBER}"
                 }
                 echo "Image name will be: ${env.IMAGE_NAME}"
-                
+            
+            
                 // This is the command that actually builds the Docker image
                 sh "docker build -t ${env.IMAGE_NAME} ."
             }
@@ -59,10 +72,12 @@ pipeline {
                     // 1. Log in to GCP using the service account key
                     sh "gcloud auth activate-service-account --key-file=${GCP_CREDS}"
                     
+  
                     // 2. Configure Docker to talk to GCP's Artifact Registry
                     sh "gcloud auth configure-docker ${env.REGION}-docker.pkg.dev"
                     
                     // 3. Push our image to the registry
+  
                     echo "Pushing image to Artifact Registry..."
                     sh "docker push ${env.IMAGE_NAME}"
                 }
@@ -70,11 +85,13 @@ pipeline {
         }
 
         stage('Deploy to Cloud Run') {
+      
             steps {
                 echo "Deploying to Cloud Run..."
                 withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_CREDS')]) {
                     
                     // Log in again (good practice for deployment stage)
+     
                     sh "gcloud auth activate-service-account --key-file=${GCP_CREDS}"
                     
                     // This is the big deployment command!
@@ -82,6 +99,7 @@ pipeline {
                         gcloud run deploy ${env.APP_NAME} \
                           --image ${env.IMAGE_NAME} \
                           --region ${env.REGION} \
+               
                           --platform managed \
                           --allow-unauthenticated
                     """
@@ -89,6 +107,7 @@ pipeline {
             }
         }
     }
+ 
     
     // 4. "post" actions run at the end of the pipeline
     post {
@@ -109,5 +128,4 @@ pipeline {
             // Here you could add an email notification for failure
         }
     }
-
 }
